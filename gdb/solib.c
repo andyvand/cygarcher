@@ -473,18 +473,14 @@ solib_map_sections (struct so_list *so)
   char *filename;
   struct target_section *p;
   struct cleanup *old_chain;
-  bfd *abfd;
 
   filename = tilde_expand (so->so_name);
   old_chain = make_cleanup (xfree, filename);
-  abfd = ops->bfd_open (filename);
+  so->abfd = ops->bfd_open (filename);
   do_cleanups (old_chain);
 
-  if (abfd == NULL)
+  if (so->abfd == NULL)
     return 0;
-
-  /* Leave bfd open, core_xfer_memory and "info files" need it.  */
-  so->abfd = abfd;
 
   gdb_assert (ops->validate != NULL);
   if (!ops->validate (so))
@@ -500,15 +496,17 @@ solib_map_sections (struct so_list *so)
      the library's host-side path.  If we let the target dictate
      that objfile's path, and the target is different from the host,
      GDB/MI will not provide the correct host-side path.  */
-  if (strlen (bfd_get_filename (abfd)) >= SO_NAME_MAX_PATH_SIZE)
+  if (strlen (bfd_get_filename (so->abfd)) >= SO_NAME_MAX_PATH_SIZE)
     error (_("Shared library file name is too long."));
-  strcpy (so->so_name, bfd_get_filename (abfd));
+  strcpy (so->so_name, bfd_get_filename (so->abfd));
 
-  if (build_section_table (abfd, &so->sections, &so->sections_end))
+  if (build_section_table (so->abfd, &so->sections, &so->sections_end))
     {
       error (_("Can't find the file sections in `%s': %s"),
-	     bfd_get_filename (abfd), bfd_errmsg (bfd_get_error ()));
+	     bfd_get_filename (so->abfd), bfd_errmsg (bfd_get_error ()));
     }
+
+  /* Leave bfd open, core_xfer_memory and "info files" need it.  */
 
   for (p = so->sections; p < so->sections_end; p++)
     {
