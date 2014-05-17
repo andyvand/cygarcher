@@ -71,4 +71,15 @@ int xsnprintf (char *str, size_t size, const char *format, ...)
 
 char *savestring (const char *ptr, size_t len);
 
+ULONGEST strtoulst (const char *num, const char **trailer, int base);
+
+/* Skip leading whitespace characters in INP, returning an updated
+   pointer.  If INP is NULL, return NULL.  */
+
+extern char *skip_spaces (char *inp);
+
+/* A const-correct version of the above.  */
+
+extern const char *skip_spaces_const (const char *inp);
+
 #endif

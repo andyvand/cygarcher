@@ -213,30 +213,6 @@ number_is_in_list (char *list, int number)
 
 /* See documentation in cli-utils.h.  */
 
-char *
-skip_spaces (char *chp)
-{
-  if (chp == NULL)
-    return NULL;
-  while (*chp && isspace (*chp))
-    chp++;
-  return chp;
-}
-
-/* A const-correct version of the above.  */
-
-const char *
-skip_spaces_const (const char *chp)
-{
-  if (chp == NULL)
-    return NULL;
-  while (*chp && isspace (*chp))
-    chp++;
-  return chp;
-}
-
-/* See documentation in cli-utils.h.  */
-
 const char *
 skip_to_space_const (const char *chp)
 {
