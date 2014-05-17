@@ -479,16 +479,11 @@ solib_map_sections (struct so_list *so)
   so->abfd = ops->bfd_open (filename);
   do_cleanups (old_chain);
 
+  gdb_assert (ops->validate != NULL);
+  ops->validate (so);
+
   if (so->abfd == NULL)
     return 0;
-
-  gdb_assert (ops->validate != NULL);
-  if (!ops->validate (so))
-    {
-      gdb_bfd_unref (so->abfd);
-      so->abfd = NULL;
-      return 0;
-    }
 
   /* Copy the full path name into so_name, allowing symbol_file_add
      to find it later.  This also affects the =library-loaded GDB/MI
@@ -1544,12 +1539,12 @@ remove_user_added_objfile (struct objfile *objfile)
     }
 }
 
-/* Default implementation does not perform any validation.  */
+/* See solib.h.  */
 
-int
-default_solib_validate (const struct so_list *so)
+void
+default_solib_validate (struct so_list *so)
 {
-  return 1; /* No validation.  */
+  /* No validation.  */
 }
 
 extern initialize_file_ftype _initialize_solib; /* -Wmissing-prototypes */

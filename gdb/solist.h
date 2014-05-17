@@ -185,9 +185,9 @@ struct target_so_ops
        for this target.  */
     void (*handle_event) (void);
 
-    /* Return 1 if SO does match target SO it is supposed to
-       represent.  Otherwise return 0.  */
-    int (*validate) (const struct so_list *so);
+    /* Update SO->ABFD for a matching BFD.  Close and clear SO->ABFD if there
+       is no matching file.  */
+    void (*validate) (struct so_list *so);
   };
 
 /* Free the memory associated with a (so_list *).  */

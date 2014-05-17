@@ -104,10 +104,13 @@ build_id_verify (bfd *abfd, size_t check_len, const bfd_byte *check)
   return 1;
 }
 
-/* See build-id.h.  */
+/* Find and open a BFD given a build-id.  If no BFD can be found,
+   return NULL.  Use "" or ".debug" for SUFFIX.  The returned reference to the
+   BFD must be released by the caller.  */
 
-bfd *
-build_id_to_debug_bfd (size_t build_id_len, const bfd_byte *build_id)
+static bfd *
+build_id_to_bfd (size_t build_id_len, const bfd_byte *build_id,
+		 const char *suffix)
 {
   char *link, *debugdir;
   VEC (char_ptr) *debugdir_vec;
@@ -117,7 +120,7 @@ build_id_to_debug_bfd (size_t build_id_len, const bfd_byte *build_id)
 
   /* DEBUG_FILE_DIRECTORY/.build-id/ab/cdef */
   link = alloca (strlen (debug_file_directory) + (sizeof "/.build-id/" - 1) + 1
-		 + 2 * build_id_len + (sizeof ".debug" - 1) + 1);
+		 + 2 * build_id_len + strlen (suffix) + 1);
 
   /* Keep backward compatibility so that DEBUG_FILE_DIRECTORY being "" will
      cause "/.build-id/..." lookups.  */
@@ -145,7 +148,7 @@ build_id_to_debug_bfd (size_t build_id_len, const bfd_byte *build_id)
 	*s++ = '/';
       while (size-- > 0)
 	s += sprintf (s, "%02x", (unsigned) *data++);
-      strcpy (s, ".debug");
+      strcpy (s, suffix);
 
       /* lrealpath() is expensive even for the usually non-existent files.  */
       if (access (link, F_OK) == 0)
@@ -168,6 +171,14 @@ build_id_to_debug_bfd (size_t build_id_len, const bfd_byte *build_id)
 
   do_cleanups (back_to);
   return abfd;
+}
+
+/* See build-id.h.  */
+
+bfd *
+build_id_to_debug_bfd (size_t build_id_len, const bfd_byte *build_id)
+{
+  return build_id_to_bfd (build_id_len, build_id, ".debug");
 }
 
 /* See build-id.h.  */
@@ -204,26 +215,47 @@ find_separate_debug_file_by_buildid (struct objfile *objfile)
 }
 /* See build-id.h.  */
 
-int
-build_id_so_validate (const struct so_list *so)
+void
+build_id_so_validate (struct so_list *so)
 {
-  const struct elf_build_id *found;
-  bfd *build_id_bfd;
-
-  gdb_assert (so->abfd != NULL);
+  const struct elf_build_id *found = NULL;
 
   /* Target doesn't support reporting the build ID or the remote shared library
      does not have build ID.  */
   if (so->build_id == NULL)
-    return 1;
+    return;
+
+  if (so->abfd != NULL)
+    found = build_id_bfd_get (so->abfd);
+
+  if (found != NULL && found->size == so->build_idsz
+      && memcmp (found->data, so->build_id, found->size) == 0)
+    return;
+
+  if (!build_id_force)
+    {
+      bfd *build_id_bfd = build_id_to_bfd (so->build_idsz, so->build_id, "");
+
+      if (build_id_bfd != NULL)
+	{
+	  gdb_bfd_unref (so->abfd);
+	  so->abfd = build_id_bfd;
+	  return;
+	}
+    }
 
   /* Build ID may be present in the local file, just GDB is unable to retrieve
      it.  (Inferior Build ID report by gdbserver cannot be FSF gdbserver.)  */
-  if (!bfd_check_format (so->abfd, bfd_object)
+  if (so->abfd == NULL
+      || !bfd_check_format (so->abfd, bfd_object)
       || bfd_get_flavour (so->abfd) != bfd_target_elf_flavour)
-    return 1;
+    return;
 
-  return build_id_verify (so->abfd, so->build_idsz, so->build_id);
+  if (!build_id_verify (so->abfd, so->build_idsz, so->build_id))
+    {
+      gdb_bfd_unref (so->abfd);
+      so->abfd = NULL;
+    }
 }
 
 extern initialize_file_ftype _initialize_build_id; /* -Wmissing-prototypes */

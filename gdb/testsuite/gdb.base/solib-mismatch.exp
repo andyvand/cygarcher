@@ -59,6 +59,10 @@ set binlibfilegdb ${binlibfiledirgdb}/${binlibfilebase}
 set srcfile ${testfile}.c
 set executable ${testfile}
 
+# Pattern matching for 'info sharedlibrary'.
+set nocrlf "\[^\r\n\]*"
+set expected_header "From${nocrlf}To${nocrlf}Syms${nocrlf}Read${nocrlf}Shared${nocrlf}"
+
 file delete -force -- "${binlibfiledirrun}"
 file mkdir "${binlibfiledirrun}"
 
@@ -91,6 +95,8 @@ proc solib_matching_test { solibfile symsloaded } {
   global binlibfiledirrun
   global binlibfiledirgdb
   global srcfile
+  global expected_header
+  global nocrlf
 
   clean_restart ${binlibfiledirrun}/${executable}
 
@@ -110,8 +116,6 @@ proc solib_matching_test { solibfile symsloaded } {
 
   gdb_test "sharedlibrary" "" ""
 
-  set nocrlf "\[^\r\n\]*"
-  set expected_header "From${nocrlf}To${nocrlf}Syms${nocrlf}Read${nocrlf}Shared${nocrlf}"
   set expected_line "${symsloaded}${nocrlf}${solibfile}"
 
   gdb_test "info sharedlibrary ${solibfile}" \
@@ -119,6 +123,23 @@ proc solib_matching_test { solibfile symsloaded } {
     "Symbols for ${solibfile} loaded: expected '${symsloaded}'"
 
   return 0
+}
+
+proc solib_locate_test { solibfile symsloaded } {
+  global binlibfiledirrun
+  global binlibfilerun
+  global nocrlf
+  global expected_header
+
+  gdb_test_no_output "set debug-file-directory ${binlibfiledirrun}" ""
+  gdb_test_no_output "nosharedlibrary" ""
+  gdb_test "sharedlibrary" "" ""
+
+  set expected_line "${symsloaded}${nocrlf}${solibfile}"
+
+  gdb_test "info sharedlibrary ${solibfile}" \
+    "${expected_header}\r\n.*${expected_line}.*" \
+    "Symbols for ${solibfile} loaded: expected '${symsloaded}'"
 }
 
 # Copy binary to working dir so it pulls in the library from that dir
@@ -144,8 +165,29 @@ with_test_prefix "test --only-keep-debug" {
   solib_matching_test "${binlibfilebase}" "No"
 }
 
+# Test locating file by its build-id - if the regular filename does not match.
+# build-id file has to be a symlink - otherwise so_list->so_name shown in 'info
+# sharedlibrary' would contain the build-id hash and not the library name.
+set build_id_debug_relative [build_id_debug_filename_get $binlibfilerun]
+if { ![regexp {^(.*)\.debug$} $build_id_debug_relative trash build_id_relative] } {
+    fail "strip debug $build_id_debug_relative"
+    return
+}
+set build_id_filename "${binlibfiledirrun}/$build_id_relative"
+file mkdir [file dirname $build_id_filename]
+remote_exec host "ln -sf $binlibfilerun $build_id_filename"
+with_test_prefix "locate non-matching shared library" {
+  solib_locate_test "${binlibfilebase}" "Yes"
+}
+
 # Keep previous so for debugging puroses
 file copy -force "${binlibfilegdb}" "${binlibfilegdb}-orig1"
+
+# Test locating file by its build-id - if the regular filename does not exist.
+file delete -force "${binlibfilegdb}"
+with_test_prefix "locate non-existing shared library" {
+  solib_locate_test "${binlibfilebase}" "Yes"
+}
 
 # Copy loaded so over the one gdb will find
 file copy -force "${binlibfilerun}" "${binlibfilegdb}"

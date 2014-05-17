@@ -98,8 +98,8 @@ extern void update_solib_breakpoints (void);
 
 extern void handle_solib_event (void);
 
-/* Default validation always returns 1.  */
+/* Default validation is a nop.  */
 
-extern int default_solib_validate (const struct so_list *so);
+extern void default_solib_validate (struct so_list *so);
 
 #endif /* SOLIB_H */

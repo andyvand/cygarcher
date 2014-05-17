@@ -44,6 +44,6 @@ extern char *find_separate_debug_file_by_buildid (struct objfile *objfile);
 /* Validate SO by comparing build-id from the associated bfd and
    corresponding build-id from target memory.  */
 
-extern int build_id_so_validate (const struct so_list *so);
+extern void build_id_so_validate (struct so_list *so);
 
 #endif /* BUILD_ID_H */
