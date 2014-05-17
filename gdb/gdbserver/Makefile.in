@@ -177,7 +177,8 @@ OBS = agent.o ax.o inferiors.o regcache.o remote-utils.o server.o signals.o \
       target.o waitstatus.o utils.o debug.o version.o vec.o gdb_vecs.o \
       mem-break.o hostio.o event-loop.o tracepoint.o xml-utils.o \
       common-utils.o ptid.o buffer.o format.o filestuff.o dll.o notif.o \
-      tdesc.o print-utils.o rsp-low.o $(XML_BUILTIN) $(DEPFILES) $(LIBOBJS)
+      tdesc.o print-utils.o rsp-low.o target-utils.o \
+      $(XML_BUILTIN) $(DEPFILES) $(LIBOBJS)
 GDBREPLAY_OBS = gdbreplay.o version.o
 GDBSERVER_LIBS = @GDBSERVER_LIBS@
 XM_CLIBS = @LIBS@
@@ -489,6 +490,9 @@ ax.o: ax.c
 signals.o: ../common/signals.c
 	$(COMPILE) $<
 	$(POSTCOMPILE)
+linux-maps.o: ../common/linux-maps.c
+	$(COMPILE) $<
+	$(POSTCOMPILE)
 print-utils.o: ../common/print-utils.c
 	$(COMPILE) $<
 	$(POSTCOMPILE)
@@ -499,6 +503,9 @@ linux-procfs.o: ../common/linux-procfs.c
 	$(COMPILE) $<
 	$(POSTCOMPILE)
 linux-ptrace.o: ../common/linux-ptrace.c
+	$(COMPILE) $<
+	$(POSTCOMPILE)
+target-utils.o: ../common/target-utils.c
 	$(COMPILE) $<
 	$(POSTCOMPILE)
 common-utils.o: ../common/common-utils.c

@@ -852,7 +852,8 @@ LINTFILES = $(SFILES) $(YYFILES) $(CONFIG_SRCS) init.c
 
 HFILES_NO_SRCDIR = \
 common/gdb_signals.h common/gdb_thread_db.h common/gdb_vecs.h \
-common/i386-xstate.h common/linux-ptrace.h common/mips-linux-watch.h \
+common/i386-xstate.h \
+common/linux-maps.h common/linux-ptrace.h common/mips-linux-watch.h \
 proc-utils.h aarch64-tdep.h arm-tdep.h ax-gdb.h ppcfbsd-tdep.h \
 ppcnbsd-tdep.h cli-out.h gdb_expat.h breakpoint.h infcall.h obsd-tdep.h \
 exec.h m32r-tdep.h osabi.h gdbcore.h solib-som.h amd64bsd-nat.h \
@@ -923,7 +924,7 @@ common/linux-osdata.h gdb-dlfcn.h auto-load.h probe.h stap-probe.h \
 gdb_bfd.h sparc-ravenscar-thread.h ppc-ravenscar-thread.h common/linux-btrace.h \
 ctf.h common/i386-cpuid.h common/i386-gcc-cpuid.h target/resume.h \
 target/wait.h target/waitstatus.h nat/linux-nat.h nat/linux-waitpid.h \
-common/print-utils.h common/rsp-low.h
+common/print-utils.h common/rsp-low.h common/target-utils.h
 
 # Header files that already have srcdir in them, or which are in objdir.
 
@@ -1022,7 +1023,7 @@ COMMON_OBS = $(DEPFILES) $(CONFIG_OBS) $(YYOBJ) \
 	gdb_vecs.o jit.o progspace.o skip.o probe.o \
 	common-utils.o buffer.o ptid.o gdb-dlfcn.o common-agent.o \
 	format.o registry.o btrace.o record-btrace.o waitstatus.o \
-	print-utils.o rsp-low.o
+	print-utils.o rsp-low.o target-utils.o
 
 TSOBS = inflow.o
 
@@ -2116,6 +2117,10 @@ format.o: ${srcdir}/common/format.c
 	$(COMPILE) $(srcdir)/common/format.c
 	$(POSTCOMPILE)
 
+linux-maps.o: ${srcdir}/common/linux-maps.c
+	$(COMPILE) $(srcdir)/common/linux-maps.c
+	$(POSTCOMPILE)
+
 linux-osdata.o: ${srcdir}/common/linux-osdata.c
 	$(COMPILE) $(srcdir)/common/linux-osdata.c
 	$(POSTCOMPILE)
@@ -2130,6 +2135,10 @@ linux-ptrace.o: $(srcdir)/common/linux-ptrace.c
 
 common-agent.o: $(srcdir)/common/agent.c
 	$(COMPILE) $(srcdir)/common/agent.c
+	$(POSTCOMPILE)
+
+target-utils.o: ${srcdir}/common/target-utils.c
+	$(COMPILE) $(srcdir)/common/target-utils.c
 	$(POSTCOMPILE)
 
 vec.o: ${srcdir}/common/vec.c
