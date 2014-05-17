@@ -27,6 +27,22 @@
 #include "symfile.h"
 #include "objfiles.h"
 #include "filenames.h"
+#include "rsp-low.h"
+#include "gdbcmd.h"
+
+/* Boolean for command 'set build-id-force'.  */
+static int build_id_force = 0;
+
+/* Implement 'show build-id-force'.  */
+
+static void
+show_build_id_force (struct ui_file *file, int from_tty,
+			   struct cmd_list_element *c, const char *value)
+{
+  fprintf_filtered (file, _("Loading of shared libraries "
+			    "with non-matching build-id is %s.\n"),
+		    value);
+}
 
 /* Locate NT_GNU_BUILD_ID from ABFD and return its content.  */
 
@@ -50,22 +66,41 @@ build_id_bfd_get (bfd *abfd)
 int
 build_id_verify (bfd *abfd, size_t check_len, const bfd_byte *check)
 {
-  const struct elf_build_id *found;
-  int retval = 0;
+  const struct elf_build_id *found = build_id_bfd_get (abfd);
+  char *message, *check_hex = alloca (check_len * 2 + 1);
 
-  found = build_id_bfd_get (abfd);
+  bin2hex (check, check_hex, check_len);
 
   if (found == NULL)
-    warning (_("File \"%s\" has no build-id, file skipped"),
-	     bfd_get_filename (abfd));
+    message = xstrprintf (_("inferior build ID is %s but symbol file \"%s\" "
+			    "does not have build ID"),
+			  check_hex, bfd_get_filename (abfd));
   else if (found->size != check_len
            || memcmp (found->data, check, found->size) != 0)
-    warning (_("File \"%s\" has a different build-id, file skipped"),
-	     bfd_get_filename (abfd));
-  else
-    retval = 1;
+    {
+      char *abfd_hex = alloca (found->size * 2 + 1);
 
-  return retval;
+      bin2hex (found->data, abfd_hex, found->size);
+      message = xstrprintf (_("inferior build ID %s is not identical to "
+			      "symbol file \"%s\" build ID %s"),
+			    check_hex, bfd_get_filename (abfd), abfd_hex);
+    }
+  else
+    return 1;
+
+  if (!build_id_force)
+    {
+      warning (_("Symbol file \"%s\" could not be validated (%s) and "
+		 "will be ignored; or use 'set build-id-force'."),
+	       bfd_get_filename (abfd), message);
+      xfree (message);
+      return 0;
+    }
+  warning (_("Symbol file \"%s\" could not be validated (%s) "
+	     "but it is being loaded due to 'set build-id-force'."),
+	   bfd_get_filename (abfd), message);
+  xfree (message);
+  return 1;
 }
 
 /* See build-id.h.  */
@@ -165,4 +200,23 @@ find_separate_debug_file_by_buildid (struct objfile *objfile)
 	}
     }
   return NULL;
+}
+
+extern initialize_file_ftype _initialize_build_id; /* -Wmissing-prototypes */
+
+void
+_initialize_build_id (void)
+{
+  add_setshow_boolean_cmd ("build-id-force", class_support,
+			   &build_id_force, _("\
+Set loading of shared libraries with non-matching build-id."), _("\
+Show loading of shared libraries with non-matching build-id."), _("\
+Inferior shared library and symbol file may contain unique build-id.\n\
+If both build-ids are present but they do not match then this setting\n\
+enables (on) or disables (off) loading of such symbol file.\n\
+Loading non-matching symbol file may confuse debugging including breakage\n\
+of backtrace output."),
+			   NULL,
+			   show_build_id_force,
+			   &setlist, &showlist);
 }

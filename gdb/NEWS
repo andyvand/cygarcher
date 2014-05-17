@@ -61,6 +61,13 @@ maint ada show ignore-descriptive-types
   the user manual for more details on descriptive types and the intended
   usage of this option.
 
+set build-id-force (on|off)
+show build-id-force
+  Symbol files and separate debug info files (sometimes with file extension
+  ".debug") may contain unique build-id.  If one is present but the other one
+  is missing or it is not identical then this setting enables (on)
+  or disables (off) loading of such separate debug info file.
+
 * New features in the GDB remote stub, GDBserver
 
   ** New option --debug-format=option1[,option2,...] allows one to add

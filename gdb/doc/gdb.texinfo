@@ -17139,6 +17139,46 @@ libraries that were loaded by explicit user requests are not
 discarded.
 @end table
 
+@table @code
+@kindex set build-id-force
+@cindex override @value{GDBN} build-id check
+@item set build-id-force @var{mode}
+Setting to override @value{GDBN} build-id check.
+
+Inferior shared libraries and symbol files may contain unique build-id.
+@value{GDBN} expects the build-ids of each shared library and its corresponding
+symbol file to be identical.  If they are not identical, then by default
+@value{GDBN} will @value{GDBN} will ignore symbol files with non-matching
+build-id while printing:
+
+@smallexample
+  warning: Symbol file "libfoo.so.1" could not be validated (inferior
+  build ID 2bc1745e does not match symbol file build ID a08f8767) and
+  will be ignored; or use 'set build-id-force'.
+@end smallexample
+
+Turning on this setting would load such symbol file while still printing:
+
+@smallexample
+  warning: Symbol file "libfoo.so.1" could not be validated (inferior
+  build ID 2bc1745e is not identical to symbol file build ID a08f8767)
+  but it is being loaded due to 'set build-id-force'.
+@end smallexample
+
+If inferior build-id is present but it is not identical to symbol file build-id
+(or the symbol file build-id is not present) then this setting enables
+(@var{mode} is @code{on}) or disables (@var{mode} is @code{off}) loading of
+such symbol file.  On systems where build-id is not present in the inferior
+system this setting has no effect.  The default value is @code{off}.
+
+Loading non-matching symbol file may confuse debugging including breakage
+of backtrace output.
+
+@kindex show build-id-force
+@item show build-id-force
+Display the current mode of build-id check override.
+@end table
+
 Sometimes you may wish that @value{GDBN} stops and gives you control
 when any of shared library events happen.  The best way to do this is
 to use @code{catch load} and @code{catch unload} (@pxref{Set
