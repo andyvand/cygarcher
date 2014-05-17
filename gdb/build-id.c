@@ -27,6 +27,7 @@
 #include "symfile.h"
 #include "objfiles.h"
 #include "filenames.h"
+#include "solist.h"
 #include "rsp-low.h"
 #include "gdbcmd.h"
 
@@ -200,6 +201,29 @@ find_separate_debug_file_by_buildid (struct objfile *objfile)
 	}
     }
   return NULL;
+}
+/* See build-id.h.  */
+
+int
+build_id_so_validate (const struct so_list *so)
+{
+  const struct elf_build_id *found;
+  bfd *build_id_bfd;
+
+  gdb_assert (so->abfd != NULL);
+
+  /* Target doesn't support reporting the build ID or the remote shared library
+     does not have build ID.  */
+  if (so->build_id == NULL)
+    return 1;
+
+  /* Build ID may be present in the local file, just GDB is unable to retrieve
+     it.  (Inferior Build ID report by gdbserver cannot be FSF gdbserver.)  */
+  if (!bfd_check_format (so->abfd, bfd_object)
+      || bfd_get_flavour (so->abfd) != bfd_target_elf_flavour)
+    return 1;
+
+  return build_id_verify (so->abfd, so->build_idsz, so->build_id);
 }
 
 extern initialize_file_ftype _initialize_build_id; /* -Wmissing-prototypes */

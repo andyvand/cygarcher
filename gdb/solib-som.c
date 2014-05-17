@@ -816,6 +816,7 @@ _initialize_som_solib (void)
   som_so_ops.open_symbol_file_object = som_open_symbol_file_object;
   som_so_ops.in_dynsym_resolve_code = som_in_dynsym_resolve_code;
   som_so_ops.bfd_open = solib_bfd_open;
+  som_so_ops.validate = default_solib_validate;
 }
 
 void

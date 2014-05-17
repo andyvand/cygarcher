@@ -688,6 +688,7 @@ ia64_hpux_target_so_ops (void)
   ops->open_symbol_file_object = ia64_hpux_open_symbol_file_object;
   ops->in_dynsym_resolve_code = ia64_hpux_in_dynsym_resolve_code;
   ops->bfd_open = solib_bfd_open;
+  ops->validate = default_solib_validate;
 
   return ops;
 }

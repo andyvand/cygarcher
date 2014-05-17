@@ -621,6 +621,7 @@ _initialize_pa64_solib (void)
   pa64_so_ops.open_symbol_file_object = pa64_open_symbol_file_object;
   pa64_so_ops.in_dynsym_resolve_code = pa64_in_dynsym_resolve_code;
   pa64_so_ops.bfd_open = solib_bfd_open;
+  pa64_so_ops.validate = default_solib_validate;
 
   memset (&dld_cache, 0, sizeof (dld_cache));
 }

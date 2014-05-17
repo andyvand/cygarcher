@@ -76,6 +76,10 @@ show build-id-force
      Timestamps can also be turned on with the
      "monitor set debug-format timestamps" command from GDB.
 
+  ** library-list-svr4 contains also optional attribute 'build-id' for
+     each library.  GDB does not load library with build-id that
+     does not match such attribute.
+
 * The 'record instruction-history' command now starts counting instructions
   at one.  This also affects the instruction ranges reported by the
   'record function-call-history' command when given the /i modifier.

@@ -486,6 +486,14 @@ solib_map_sections (struct so_list *so)
   /* Leave bfd open, core_xfer_memory and "info files" need it.  */
   so->abfd = abfd;
 
+  gdb_assert (ops->validate != NULL);
+  if (!ops->validate (so))
+    {
+      gdb_bfd_unref (so->abfd);
+      so->abfd = NULL;
+      return 0;
+    }
+
   /* Copy the full path name into so_name, allowing symbol_file_add
      to find it later.  This also affects the =library-loaded GDB/MI
      event, and in particular the part of that notification providing
@@ -586,6 +594,7 @@ free_so (struct so_list *so)
   clear_so (so);
   ops->free_so (so);
 
+  xfree (so->build_id);
   xfree (so);
 }
 
@@ -1535,6 +1544,14 @@ remove_user_added_objfile (struct objfile *objfile)
 	if (so->objfile == objfile)
 	  so->objfile = NULL;
     }
+}
+
+/* Default implementation does not perform any validation.  */
+
+int
+default_solib_validate (const struct so_list *so)
+{
+  return 1; /* No validation.  */
 }
 
 extern initialize_file_ftype _initialize_solib; /* -Wmissing-prototypes */

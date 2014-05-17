@@ -47,6 +47,8 @@
 #include "exceptions.h"
 #include "gdb_bfd.h"
 #include "probe.h"
+#include "build-id.h"
+#include "rsp-low.h"
 
 static struct link_map_offsets *svr4_fetch_link_map_offsets (void);
 static int svr4_have_link_map_offsets (void);
@@ -359,6 +361,8 @@ struct svr4_info
 
   /* Load map address for the main executable.  */
   CORE_ADDR main_lm_addr;
+  size_t main_build_idsz;
+  gdb_byte *main_build_id;
 
   CORE_ADDR interp_text_sect_low;
   CORE_ADDR interp_text_sect_high;
@@ -1044,6 +1048,9 @@ struct svr4_library_list
   /* Inferior address of struct link_map used for the main executable.  It is
      NULL if not known.  */
   CORE_ADDR main_lm;
+
+  size_t main_build_idsz;
+  gdb_byte *main_build_id;
 };
 
 /* Implementation for target_so_ops.free_so.  */
@@ -1097,6 +1104,12 @@ svr4_copy_library_list (struct so_list *src)
       new->lm_info = xmalloc (sizeof (struct lm_info));
       memcpy (new->lm_info, src->lm_info, sizeof (struct lm_info));
 
+      if (new->build_id != NULL)
+	{
+	  new->build_id = xmalloc (new->build_idsz);
+	  memcpy (new->build_id, src->build_id, new->build_idsz);
+	}
+
       new->next = NULL;
       *link = new;
       link = &new->next;
@@ -1111,6 +1124,27 @@ svr4_copy_library_list (struct so_list *src)
 
 #include "xml-support.h"
 
+static void
+hex2bin_allocate (const char *hex, gdb_byte **binp, size_t *binszp)
+{
+  size_t hex_len, binsz;
+
+  if (hex == NULL)
+    return;
+  hex_len = strlen (hex);
+  if (hex_len == 0 || (hex_len & 1U) != 0)
+    return;
+  binsz = hex_len / 2;
+  *binp = xmalloc (binsz);
+  *binszp = hex2bin (hex, *binp, binsz);
+  if (*binszp != binsz)
+    {
+      xfree (*binp);
+      *binp = NULL;
+      *binszp = 0;
+    }
+}
+
 /* Handle the start of a <library> element.  Note: new elements are added
    at the tail of the list, keeping the list in order.  */
 
@@ -1124,6 +1158,9 @@ library_list_start_library (struct gdb_xml_parser *parser,
   ULONGEST *lmp = xml_find_attribute (attributes, "lm")->value;
   ULONGEST *l_addrp = xml_find_attribute (attributes, "l_addr")->value;
   ULONGEST *l_ldp = xml_find_attribute (attributes, "l_ld")->value;
+  const struct gdb_xml_value *const att_build_id
+    = xml_find_attribute (attributes, "build-id");
+  const char *const hex_build_id = att_build_id ? att_build_id->value : NULL;
   struct so_list *new_elem;
 
   new_elem = XCNEW (struct so_list);
@@ -1135,6 +1172,7 @@ library_list_start_library (struct gdb_xml_parser *parser,
   strncpy (new_elem->so_name, name, sizeof (new_elem->so_name) - 1);
   new_elem->so_name[sizeof (new_elem->so_name) - 1] = 0;
   strcpy (new_elem->so_original_name, new_elem->so_name);
+  hex2bin_allocate (hex_build_id, &new_elem->build_id, &new_elem->build_idsz);
 
   *list->tailp = new_elem;
   list->tailp = &new_elem->next;
@@ -1150,6 +1188,9 @@ svr4_library_list_start_list (struct gdb_xml_parser *parser,
   struct svr4_library_list *list = user_data;
   const char *version = xml_find_attribute (attributes, "version")->value;
   struct gdb_xml_value *main_lm = xml_find_attribute (attributes, "main-lm");
+  const struct gdb_xml_value *const att_build_id
+    = xml_find_attribute (attributes, "build-id");
+  const char *const hex_build_id = att_build_id ? att_build_id->value : NULL;
 
   if (strcmp (version, "1.0") != 0)
     gdb_xml_error (parser,
@@ -1158,6 +1199,7 @@ svr4_library_list_start_list (struct gdb_xml_parser *parser,
 
   if (main_lm)
     list->main_lm = *(ULONGEST *) main_lm->value;
+  hex2bin_allocate (hex_build_id, &list->main_build_id, &list->main_build_idsz);
 }
 
 /* The allowed elements and attributes for an XML library list.
@@ -1169,6 +1211,7 @@ static const struct gdb_xml_attribute svr4_library_attributes[] =
   { "lm", GDB_XML_AF_NONE, gdb_xml_parse_attr_ulongest, NULL },
   { "l_addr", GDB_XML_AF_NONE, gdb_xml_parse_attr_ulongest, NULL },
   { "l_ld", GDB_XML_AF_NONE, gdb_xml_parse_attr_ulongest, NULL },
+  { "build-id", GDB_XML_AF_OPTIONAL, NULL, NULL },
   { NULL, GDB_XML_AF_NONE, NULL, NULL }
 };
 
@@ -1186,6 +1229,7 @@ static const struct gdb_xml_attribute svr4_library_list_attributes[] =
 {
   { "version", GDB_XML_AF_NONE, NULL, NULL },
   { "main-lm", GDB_XML_AF_OPTIONAL, gdb_xml_parse_attr_ulongest, NULL },
+  { "main-build-id", GDB_XML_AF_OPTIONAL, NULL, NULL },
   { NULL, GDB_XML_AF_NONE, NULL, NULL }
 };
 
@@ -1413,15 +1457,24 @@ svr4_current_sos_direct (struct svr4_info *info)
      Unfortunately statically linked inferiors will also fall back through this
      suboptimal code path.  */
 
+  library_list.main_build_id = NULL;
+  library_list.main_build_idsz = 0;
   info->using_xfer = svr4_current_sos_via_xfer_libraries (&library_list,
 							  NULL);
   if (info->using_xfer)
     {
       if (library_list.main_lm)
 	info->main_lm_addr = library_list.main_lm;
+      if (library_list.main_build_id != NULL)
+	{
+	  xfree (info->main_build_id);
+	  info->main_build_id = library_list.main_build_id;
+	  info->main_build_idsz = library_list.main_build_idsz;
+	}
 
       return library_list.head ? library_list.head : svr4_default_sos ();
     }
+  xfree (library_list.main_build_id);
 
   /* Always locate the debug struct, in case it has moved.  */
   info->debug_base = 0;
@@ -2948,6 +3001,9 @@ svr4_clear_solib (void)
   info->debug_loader_offset = 0;
   xfree (info->debug_loader_name);
   info->debug_loader_name = NULL;
+  xfree (info->main_build_id);
+  info->main_build_id = NULL;
+  info->main_build_idsz = 0;
 }
 
 /* Clear any bits of ADDR that wouldn't fit in a target-format
@@ -3166,4 +3222,5 @@ _initialize_svr4_solib (void)
   svr4_so_ops.keep_data_in_core = svr4_keep_data_in_core;
   svr4_so_ops.update_breakpoints = svr4_update_solib_event_breakpoints;
   svr4_so_ops.handle_event = svr4_handle_solib_event;
+  svr4_so_ops.validate = build_id_so_validate;
 }
