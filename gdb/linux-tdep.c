@@ -730,6 +730,10 @@ linux_core_info_proc (struct gdbarch *gdbarch, char *args,
     error (_("unable to handle request"));
 }
 
+/* Callback function for linux_find_memory_regions_full.  If it returns
+   non-zero linux_find_memory_regions_full returns immediately with that
+   value.  */
+
 typedef int linux_find_memory_region_ftype (ULONGEST vaddr, ULONGEST size,
 					    ULONGEST offset, ULONGEST inode,
 					    int read, int write,
@@ -737,34 +741,41 @@ typedef int linux_find_memory_region_ftype (ULONGEST vaddr, ULONGEST size,
 					    const char *filename,
 					    void *data);
 
-/* List memory regions in the inferior for a corefile.  */
+/* List memory regions in the inferior PID for a corefile.  Call FUNC
+   with FUNC_DATA for each such region.  Return immediately with the
+   value returned by FUNC if it is non-zero.  *MEMORY_TO_FREE_PTR should
+   be registered to be freed automatically if called FUNC throws an
+   exception.  MEMORY_TO_FREE_PTR can be also passed as NULL if it is
+   not used.  Return -1 if error occurs, 0 if all memory regions have
+   been processed or return the value from FUNC if FUNC returns
+   non-zero.  */
 
 static int
-linux_find_memory_regions_full (struct gdbarch *gdbarch,
-				linux_find_memory_region_ftype *func,
-				void *obfd)
+linux_find_memory_regions_full (pid_t pid, linux_find_memory_region_ftype *func,
+				void *func_data, void **memory_to_free_ptr)
 {
   char mapsfilename[100];
   char *data;
 
-  /* We need to know the real target PID to access /proc.  */
-  if (current_inferior ()->fake_pid_p)
-    return 1;
-
-  xsnprintf (mapsfilename, sizeof mapsfilename,
-	     "/proc/%d/smaps", current_inferior ()->pid);
+  xsnprintf (mapsfilename, sizeof mapsfilename, "/proc/%d/smaps", (int) pid);
   data = target_fileio_read_stralloc (mapsfilename);
   if (data == NULL)
     {
       /* Older Linux kernels did not support /proc/PID/smaps.  */
-      xsnprintf (mapsfilename, sizeof mapsfilename,
-		 "/proc/%d/maps", current_inferior ()->pid);
+      xsnprintf (mapsfilename, sizeof mapsfilename, "/proc/%d/maps",
+		 (int) pid);
       data = target_fileio_read_stralloc (mapsfilename);
     }
   if (data)
     {
-      struct cleanup *cleanup = make_cleanup (xfree, data);
       char *line;
+      int retval = 0;
+
+      if (memory_to_free_ptr != NULL)
+	{
+	  gdb_assert (*memory_to_free_ptr == NULL);
+	  *memory_to_free_ptr = data;
+	}
 
       line = strtok (data, "\n");
       while (line)
@@ -821,15 +832,22 @@ linux_find_memory_regions_full (struct gdbarch *gdbarch,
 	    modified = 1;
 
 	  /* Invoke the callback function to create the corefile segment.  */
-	  func (addr, endaddr - addr, offset, inode,
-		read, write, exec, modified, filename, obfd);
+	  retval = func (addr, endaddr - addr, offset, inode,
+			 read, write, exec, modified, filename, func_data);
+	  if (retval != 0)
+	    break;
 	}
 
-      do_cleanups (cleanup);
-      return 0;
+      if (memory_to_free_ptr != NULL)
+	{
+	  gdb_assert (data == *memory_to_free_ptr);
+	  *memory_to_free_ptr = NULL;
+	}
+      xfree (data);
+      return retval;
     }
 
-  return 1;
+  return -1;
 }
 
 /* A structure for passing information through
@@ -843,8 +861,10 @@ struct linux_find_memory_regions_data
 
   /* The original datum.  */
 
-  void *obfd;
+  void *data;
 };
+
+static linux_find_memory_region_ftype linux_find_memory_regions_thunk;
 
 /* A callback for linux_find_memory_regions that converts between the
    "full"-style callback and find_memory_region_ftype.  */
@@ -857,7 +877,30 @@ linux_find_memory_regions_thunk (ULONGEST vaddr, ULONGEST size,
 {
   struct linux_find_memory_regions_data *data = arg;
 
-  return data->func (vaddr, size, read, write, exec, modified, data->obfd);
+  return data->func (vaddr, size, read, write, exec, modified, data->data);
+}
+
+/* Wrapper of linux_find_memory_regions_full handling FAKE_PID_P in GDB.  */
+
+static int
+linux_find_memory_regions_gdb (struct gdbarch *gdbarch,
+			       linux_find_memory_region_ftype *func,
+			       void *func_data)
+{
+  void *memory_to_free = NULL;
+  struct cleanup *cleanup;
+  int retval;
+
+  /* We need to know the real target PID so
+     linux_find_memory_regions_full can access /proc.  */
+  if (current_inferior ()->fake_pid_p)
+    return -1;
+
+  cleanup = make_cleanup (free_current_contents, &memory_to_free);
+  retval = linux_find_memory_regions_full (current_inferior ()->pid,
+					   func, func_data, &memory_to_free);
+  do_cleanups (cleanup);
+  return retval;
 }
 
 /* A variant of linux_find_memory_regions_full that is suitable as the
@@ -865,16 +908,15 @@ linux_find_memory_regions_thunk (ULONGEST vaddr, ULONGEST size,
 
 static int
 linux_find_memory_regions (struct gdbarch *gdbarch,
-			   find_memory_region_ftype func, void *obfd)
+			   find_memory_region_ftype func, void *func_data)
 {
   struct linux_find_memory_regions_data data;
 
   data.func = func;
-  data.obfd = obfd;
+  data.data = func_data;
 
-  return linux_find_memory_regions_full (gdbarch,
-					 linux_find_memory_regions_thunk,
-					 &data);
+  return linux_find_memory_regions_gdb (gdbarch,
+					linux_find_memory_regions_thunk, &data);
 }
 
 /* Determine which signal stopped execution.  */
@@ -1056,8 +1098,8 @@ linux_make_mappings_corefile_notes (struct gdbarch *gdbarch, bfd *obfd,
   pack_long (buf, long_type, 1);
   obstack_grow (&data_obstack, buf, TYPE_LENGTH (long_type));
 
-  linux_find_memory_regions_full (gdbarch, linux_make_mappings_callback,
-				  &mapping_data);
+  linux_find_memory_regions_gdb (gdbarch, linux_make_mappings_callback,
+				 &mapping_data);
 
   if (mapping_data.file_count != 0)
     {
