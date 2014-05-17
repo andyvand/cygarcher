@@ -19,4 +19,29 @@
 #ifndef COMMON_LINUX_MAPS_H
 #define COMMON_LINUX_MAPS_H
 
+extern void
+  read_mapping (const char *line,
+		ULONGEST *addr, ULONGEST *endaddr,
+		const char **permissions, size_t *permissions_len,
+		ULONGEST *offset,
+		const char **device, size_t *device_len,
+		ULONGEST *inode,
+		const char **filename);
+
+/* Callback function for linux_find_memory_regions_full.  If it returns
+   non-zero linux_find_memory_regions_full returns immediately with that
+   value.  */
+
+typedef int linux_find_memory_region_ftype (ULONGEST vaddr, ULONGEST size,
+					    ULONGEST offset, ULONGEST inode,
+					    int read, int write,
+					    int exec, int modified,
+					    const char *filename,
+					    void *data);
+
+extern int
+  linux_find_memory_regions_full (pid_t pid,
+				  linux_find_memory_region_ftype *func,
+				  void *func_data, void **memory_to_free_ptr);
+
 #endif /* COMMON_LINUX_MAPS_H */

@@ -20,4 +20,15 @@
 #ifndef COMMON_TARGET_UTILS_H
 #define COMMON_TARGET_UTILS_H
 
+typedef int (read_alloc_pread_ftype) (int handle, gdb_byte *read_buf, int len,
+                                      ULONGEST offset, int *target_errno);
+extern LONGEST read_alloc (gdb_byte **buf_p, int handle,
+                           read_alloc_pread_ftype *pread_func, int padding,
+			   void **memory_to_free_ptr);
+
+typedef LONGEST (read_stralloc_func_ftype) (const char *filename,
+					    gdb_byte **buf_p, int padding);
+extern char *read_stralloc (const char *filename,
+			    read_stralloc_func_ftype *func);
+
 #endif /* COMMON_TARGET_UTILS_H */
